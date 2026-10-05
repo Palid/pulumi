@@ -19,6 +19,7 @@ import (
 	"encoding/json"
 	"fmt"
 
+	"github.com/pulumi/pulumi/pkg/v3/auth"
 	"github.com/pulumi/pulumi/pkg/v3/resource/stack"
 	"github.com/pulumi/pulumi/pkg/v3/secrets"
 	"github.com/pulumi/pulumi/pkg/v3/secrets/cloud"
@@ -27,7 +28,8 @@ import (
 	"github.com/pulumi/pulumi/sdk/v3/go/common/resource/config"
 )
 
-// DefaultProvider is the default DefaultProvider to use when deserializing deployments.
+// DefaultProvider is the default DefaultProvider to use when deserializing deployments. Its service
+// secrets managers authenticate with the process's credential helper session.
 var DefaultProvider secrets.Provider = &secretsProvider{}
 
 // secretsProvider implements the secrets.ManagerProviderFactory interface. Essentially
@@ -44,7 +46,7 @@ func (secretsProvider) OfType(ctx context.Context, ty string, state json.RawMess
 	case passphrase.Type:
 		sm, err = passphrase.NewPromptingPassphraseSecretsManagerFromState(state)
 	case service.Type:
-		sm, err = service.NewServiceSecretsManagerFromState(ctx, state)
+		sm, err = service.NewServiceSecretsManagerFromState(ctx, auth.DefaultSession(), state)
 	case cloud.Type:
 		sm, err = cloud.NewCloudSecretsManagerFromState(state)
 	default:
@@ -117,7 +119,7 @@ func (s NamedStackProvider) OfType(ctx context.Context, ty string, state json.Ra
 	case passphrase.Type:
 		sm, err = passphrase.NewStackPromptingPassphraseSecretsManagerFromState(state, s.StackName)
 	case service.Type:
-		sm, err = service.NewServiceSecretsManagerFromState(ctx, state)
+		sm, err = service.NewServiceSecretsManagerFromState(ctx, auth.DefaultSession(), state)
 	case cloud.Type:
 		sm, err = cloud.NewCloudSecretsManagerFromState(state)
 	default:

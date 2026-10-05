@@ -51,7 +51,7 @@ func TestMissingPulumiAccessToken(t *testing.T) {
 
 	ctx := t.Context()
 
-	_, err := NewLoginManager().Login(ctx, "https://api.example.com", false, "", "", nil, true, display.Options{})
+	_, err := NewLoginManager(nil).Login(ctx, "https://api.example.com", false, "", "", nil, true, display.Options{})
 	var expectedErr backenderr.MissingEnvVarForNonInteractiveError
 	if assert.ErrorAs(t, err, &expectedErr) {
 		assert.Equal(t, env.AccessToken.Var(), expectedErr.Var)
@@ -97,7 +97,7 @@ func TestCurrentEnvTokenFailsWithInaccessibleExplicitPath(t *testing.T) {
 	}))
 	t.Cleanup(server.Close)
 
-	account, err := NewLoginManager().Current(t.Context(), server.URL, false, true)
+	account, err := NewLoginManager(nil).Current(t.Context(), server.URL, false, true)
 	require.Error(t, err)
 	assert.Nil(t, account)
 
@@ -123,7 +123,7 @@ func TestCurrentEnvTokenStoresInDefaultPathWhenWritable(t *testing.T) {
 	}))
 	t.Cleanup(server.Close)
 
-	account, err := NewLoginManager().Current(t.Context(), server.URL, false, true)
+	account, err := NewLoginManager(nil).Current(t.Context(), server.URL, false, true)
 	require.NoError(t, err)
 	require.NotNil(t, account)
 	assert.Equal(t, "env-token", account.Account.AccessToken)
@@ -140,7 +140,8 @@ func TestValidateStoredAccountSkipsNetworkWhenNoCredential(t *testing.T) {
 	t.Parallel()
 	// An account with neither an access nor a refresh token can't authenticate and must short-
 	// circuit before any network attempt — the cloudURL here intentionally points nowhere.
-	account, valid, err := validateStoredAccount(t.Context(), "http://127.0.0.1:0", false, workspace.Account{})
+	account, valid, err := (defaultLoginManager{}).validateStoredAccount(
+		t.Context(), "http://127.0.0.1:0", false, workspace.Account{})
 	require.NoError(t, err)
 	assert.False(t, valid)
 	assert.Empty(t, account.AccessToken)
@@ -213,7 +214,7 @@ func TestGetAccountDetails(t *testing.T) {
 				cloudURL = server.URL
 			}
 
-			username, orgs, tokenInfo, err := getAccountDetails(
+			username, orgs, tokenInfo, err := (defaultLoginManager{}).getAccountDetails(
 				t.Context(), cloudURL, false, tt.accessToken, "", nil,
 			)
 
@@ -288,7 +289,7 @@ func TestCurrentEnvTokenDoesNotBypassUndecryptableCredentials(t *testing.T) {
 	}))
 	t.Cleanup(server.Close)
 
-	account, err := NewLoginManager().Current(t.Context(), server.URL, false, true)
+	account, err := NewLoginManager(nil).Current(t.Context(), server.URL, false, true)
 	require.Error(t, err)
 	assert.Nil(t, account)
 	assert.True(t, workspace.IsUndecryptableCredentials(err),

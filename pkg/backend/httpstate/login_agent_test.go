@@ -62,7 +62,8 @@ func TestCurrentInvalidAgentCredentialsWithActiveClaimDoesNotSignup(t *testing.T
 	})
 	require.NoError(t, err)
 
-	account, err := defaultLoginManager{}.currentOrSignupAgentAccount(t.Context(), server.URL, false, true, "codex", nil)
+	account, err := defaultLoginManager{}.currentOrSignupAgentAccount(
+		t.Context(), server.URL, false, true, "codex", nil)
 	require.ErrorIs(t, err, ErrUnauthorized)
 	assert.Nil(t, account)
 	assert.Equal(t, 0, signupCalls)
@@ -101,7 +102,8 @@ func TestCurrentRejectedAgentCredentialsWithUnexpiredTokenDoesNotSignup(t *testi
 	})
 	require.NoError(t, err)
 
-	account, err := defaultLoginManager{}.currentOrSignupAgentAccount(t.Context(), server.URL, false, true, "codex", nil)
+	account, err := defaultLoginManager{}.currentOrSignupAgentAccount(
+		t.Context(), server.URL, false, true, "codex", nil)
 	require.ErrorIs(t, err, ErrUnauthorized)
 	require.ErrorIs(t, err, backenderr.LoginRequiredError{})
 	assert.ErrorContains(t, err, "ask the user to run `pulumi login`")
@@ -559,7 +561,8 @@ func TestCurrentSignupAgentAccountRequiresResponseFields(t *testing.T) {
 			}))
 			t.Cleanup(server.Close)
 
-			account, err := defaultLoginManager{}.currentOrSignupAgentAccount(t.Context(), server.URL, false, true, "codex", nil)
+			account, err := defaultLoginManager{}.currentOrSignupAgentAccount(
+				t.Context(), server.URL, false, true, "codex", nil)
 			require.ErrorContains(t, err, tt.wantErr)
 			assert.Nil(t, account)
 		})
@@ -617,7 +620,7 @@ func TestLoginUsesAgentSignupInNonInteractiveAgentMode(t *testing.T) {
 	t.Cleanup(server.Close)
 
 	ctx := ContextWithAgentCredentialUse(t.Context())
-	account, err := NewLoginManager().Login(ctx, server.URL, false, "pulumi", "Pulumi Cloud", nil, true,
+	account, err := NewLoginManager(nil).Login(ctx, server.URL, false, "pulumi", "Pulumi Cloud", nil, true,
 		display.Options{})
 	require.NoError(t, err)
 	require.NotNil(t, account)
@@ -647,7 +650,7 @@ func TestLoginWithoutAgentSignupDoesNotCreateAgentAccount(t *testing.T) {
 	t.Cleanup(server.Close)
 
 	ctx := ContextWithoutAgentSignup(t.Context())
-	account, err := NewLoginManager().Login(ctx, server.URL, false, "pulumi", "Pulumi Cloud", nil, true,
+	account, err := NewLoginManager(nil).Login(ctx, server.URL, false, "pulumi", "Pulumi Cloud", nil, true,
 		display.Options{})
 	require.ErrorAs(t, err, &backenderr.MissingEnvVarForNonInteractiveError{})
 	assert.Nil(t, account)

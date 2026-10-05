@@ -114,9 +114,10 @@ func (f *lm) Current(
 	}
 
 	insecure := pkgWorkspace.GetCloudInsecure(ws, url)
-	lm := httpstate.NewLoginManager()
+	lm := httpstate.NewLoginManager(f.session.HTTPAuth(url))
 	// A backend the helper selected is saved as current, like one the user logged in to.
-	credentials, err := lm.Current(ctx, url, insecure, setCurrent || url == f.session.SelectedBackend())
+	credentials, err := lm.Current(
+		ctx, url, insecure, setCurrent || url == f.session.SelectedBackend())
 	if err != nil || credentials == nil {
 		return nil, err
 	}
@@ -140,14 +141,15 @@ func (f *lm) Login(
 		return diy.New(ctx, sink, url, project)
 	}
 
-	lm := httpstate.NewLoginManager()
+	lm := httpstate.NewLoginManager(f.session.HTTPAuth(url))
 	// Color is the only display option used by lm.Login.
 	opts := display.Options{
 		Color: color,
 	}
 	consoleURL := client.CloudConsoleURL(url)
 	welcome := func(opts display.Options) { httpstate.WelcomeUser(opts, consoleURL) }
-	credentials, err := lm.Login(ctx, url, insecure, "pulumi", "Pulumi stacks", welcome, setCurrent, opts)
+	credentials, err := lm.Login(
+		ctx, url, insecure, "pulumi", "Pulumi stacks", welcome, setCurrent, opts)
 	if err != nil {
 		return nil, err
 	}
@@ -167,7 +169,7 @@ func (f *lm) LoginFromAuthContext(
 	authContext pkgauth.AuthContext,
 ) (backend.Backend, error) {
 	if authContext.GrantType == pkgauth.AuthContextGrantTypeTokenExchange {
-		lm := httpstate.NewLoginManager()
+		lm := httpstate.NewLoginManager(nil)
 		credentials, err := lm.LoginWithOIDCToken(
 			ctx, sink, url, insecure, authContext.Token, authContext.Organization, authContext.Scope,
 			authContext.Expiration, setCurrent)

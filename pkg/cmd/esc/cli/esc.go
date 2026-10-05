@@ -25,6 +25,7 @@ import (
 
 	"github.com/spf13/cobra"
 
+	"github.com/pulumi/pulumi/pkg/v3/auth"
 	"github.com/pulumi/pulumi/pkg/v3/backend/httpstate"
 	"github.com/pulumi/pulumi/pkg/v3/cmd/esc/cli/client"
 	pkgWorkspace "github.com/pulumi/pulumi/pkg/v3/workspace"
@@ -46,6 +47,8 @@ type Options struct {
 	Colors colors.Colorization
 
 	Login httpstate.LoginManager
+	// Session runs the credential helper for the backend. Nil means no helper.
+	Session *auth.Session
 
 	fs      escFS
 	environ environ
@@ -53,7 +56,7 @@ type Options struct {
 	pager   pager
 	ws      pkgWorkspace.Context
 
-	newClient func(userAgent, backendURL, accessToken string, insecure bool) client.Client
+	newClient func(userAgent string, credentials auth.Credentials) client.Client
 }
 
 type escCommand struct {
@@ -70,10 +73,11 @@ type escCommand struct {
 	command string
 	colors  colors.Colorization
 
-	login httpstate.LoginManager
+	login   httpstate.LoginManager
+	session *auth.Session
 
 	userAgent string
-	newClient func(userAgent, backendURL, accessToken string, insecure bool) client.Client
+	newClient func(userAgent string, credentials auth.Credentials) client.Client
 	client    client.Client
 	account   Account
 }
@@ -91,13 +95,17 @@ func newESC(opts *Options) *escCommand {
 		stderr:    valueOrDefault(opts.Stderr, io.Writer(os.Stderr)), //nolint:forbidigo,lll // default writer for the ESC CLI root command
 		command:   valueOrDefault(opts.ParentPath, "esc"),
 		colors:    valueOrDefault(opts.Colors, cmdutil.GetGlobalColorization()),
-		login:     valueOrDefault(opts.Login, httpstate.NewLoginManager()),
+		login:     opts.Login,
+		session:   valueOrDefault(opts.Session, auth.NewSessionWithHelperFunc(nil)),
 		ws:        valueOrDefault(opts.ws, pkgWorkspace.Instance),
 		userAgent: valueOrDefault(opts.UserAgent, fmt.Sprintf("esc-cli/1 (%s; %s)", version.Version, runtime.GOOS)),
 		newClient: opts.newClient,
 	}
 	if esc.newClient == nil {
-		esc.newClient = client.New
+		esc.newClient = func(userAgent string, credentials auth.Credentials) client.Client {
+			return client.NewWithHTTPAuth(userAgent, credentials.BackendURL, credentials.Account.AccessToken,
+				credentials.Account.Insecure, credentials.HTTPAuth)
+		}
 	}
 
 	return esc

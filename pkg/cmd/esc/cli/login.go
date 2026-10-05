@@ -17,8 +17,10 @@ package cli
 import (
 	"context"
 	"fmt"
+	"os"
 	"strings"
 
+	"github.com/pulumi/pulumi/pkg/v3/auth"
 	"github.com/pulumi/pulumi/pkg/v3/backend/display"
 	"github.com/pulumi/pulumi/pkg/v3/backend/diy"
 	"github.com/pulumi/pulumi/pkg/v3/backend/httpstate"
@@ -64,10 +66,22 @@ func (esc *escCommand) getCachedClient(ctx context.Context) error {
 	if err != nil {
 		projectURL = ""
 	}
-	backendURL := httpstate.ValueOrDefaultURL(esc.ws, projectURL)
+	// A credential helper supplies the backend's credentials, and may select the backend when nothing
+	// else has. A project's backend is not used here, but still keeps the helper from selecting one.
+	session := esc.session
+	if session == nil {
+		session = auth.NewSessionWithHelperFunc(nil)
+	}
+	prepare := session.PrepareBackend
+	if projectURL == "" && env.APIURL.Value() == "" && !esc.projectSelectsBackend() {
+		prepare = session.PrepareBackendWithFallback
+	}
+	backendURL, err := prepare(ctx, httpstate.ValueOrDefaultURL(esc.ws, projectURL))
+	if err != nil {
+		return fmt.Errorf("preparing backend: %w", err)
+	}
 
 	// Read the stored account for the backend from Pulumi's shared credentials.
-	var acct *Account
 	creds, err := esc.ws.GetStoredCredentials()
 	if err != nil {
 		if !workspace.AgentCredentialsFallbackEnabled() {
@@ -77,12 +91,25 @@ func (esc *escCommand) getCachedClient(ctx context.Context) error {
 		// login manager below.
 		creds = workspace.Credentials{}
 	}
-	if a, ok := creds.Accounts[backendURL]; ok {
-		acct = &Account{Account: a, BackendURL: backendURL}
+	if err := esc.checkBackendURL(backendURL); err != nil {
+		return err
 	}
 
-	if acct == nil {
-		nAccount, err := esc.login.Login(
+	var credentials *auth.Credentials
+	login := esc.login
+	if login == nil {
+		login = httpstate.NewLoginManager(session.HTTPAuth(backendURL))
+	}
+	if account, ok := creds.Accounts[backendURL]; ok {
+		credentials, err = login.Current(ctx, backendURL, account.Insecure, false)
+		if err != nil {
+			return fmt.Errorf("getting credentials: %w", err)
+		}
+		if credentials == nil {
+			return fmt.Errorf("no credentials, please run `%v login` to log in", esc.command)
+		}
+	} else {
+		credentials, err = login.Login(
 			ctx,
 			backendURL,
 			false,
@@ -95,49 +122,31 @@ func (esc *escCommand) getCachedClient(ctx context.Context) error {
 		if err != nil {
 			return fmt.Errorf("could not determine current cloud: %w", err)
 		}
-
-		acct = &Account{
-			Account: nAccount.Account,
-		}
 	}
 
-	acct.BackendURL = backendURL
-	if err := esc.checkBackendURL(acct.BackendURL); err != nil {
-		return err
-	}
+	esc.account = Account{Account: credentials.Account, BackendURL: credentials.BackendURL}
+	esc.client = esc.newClient(esc.userAgent, *credentials)
 
-	ok, err := esc.getCachedCredentials(ctx, acct.BackendURL, acct.Insecure)
-	if err != nil {
-		return fmt.Errorf("getting credentials: %w", err)
-	}
-	if !ok {
-		return fmt.Errorf("no credentials, please run `%v login` to log in", esc.command)
-	}
-
-	esc.client = esc.newClient(esc.userAgent, acct.BackendURL, acct.AccessToken, acct.Insecure)
-
-	defaultOrg, err := esc.lookupDefaultOrg(ctx, backendURL, acct.Username)
+	// The logged-in identity can differ from the stored account's when a helper supplies the token.
+	defaultOrg, err := esc.lookupDefaultOrg(ctx, backendURL, esc.account.Username)
 	if err != nil {
 		return fmt.Errorf("looking up org to default to: %w", err)
 	} else if defaultOrg != "" {
 		esc.account.DefaultOrg = defaultOrg
 	}
 
+	if backendURL == session.SelectedBackend() {
+		return auth.SaveCurrentBackend(backendURL)
+	}
 	return nil
 }
 
-func (esc *escCommand) getCachedCredentials(ctx context.Context, backendURL string, insecure bool) (bool, error) {
-	account, err := esc.login.Current(ctx, backendURL, insecure, false)
+// projectSelectsBackend reports whether the project in the working directory names a backend.
+func (esc *escCommand) projectSelectsBackend() bool {
+	cwd, err := os.Getwd()
 	if err != nil {
-		return false, err
+		return false
 	}
-	if account == nil {
-		return false, nil
-	}
-
-	esc.account = Account{
-		Account:    account.Account,
-		BackendURL: backendURL,
-	}
-	return true, nil
+	project, _, err := esc.ws.ReadProject(cwd)
+	return err == nil && project.Backend != nil && project.Backend.URL != ""
 }

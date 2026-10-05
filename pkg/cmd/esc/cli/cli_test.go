@@ -1655,7 +1655,7 @@ func (c *testExec) runScript(script string, cmd *exec.Cmd) error {
 					environ:    environ,
 					exec:       c,
 					pager:      testPager(0),
-					newClient: func(_, backendURL, accessToken string, insecure bool) client.Client {
+					newClient: func(_ string, _ auth.Credentials) client.Client {
 						return c.client
 					},
 				})

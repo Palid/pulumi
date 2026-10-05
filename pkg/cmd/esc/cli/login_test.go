@@ -17,14 +17,20 @@ package cli
 import (
 	"context"
 	"errors"
+	"fmt"
+	"io"
+	"net/http"
+	"net/http/httptest"
 	"testing"
 	"time"
 
 	"github.com/pulumi/pulumi/pkg/v3/auth"
+	"github.com/pulumi/pulumi/pkg/v3/auth/credentialhelper"
 	"github.com/pulumi/pulumi/pkg/v3/backend/display"
 	"github.com/pulumi/pulumi/pkg/v3/cmd/esc/cli/client"
 	pkgWorkspace "github.com/pulumi/pulumi/pkg/v3/workspace"
 	"github.com/pulumi/pulumi/sdk/v3/go/common/diag"
+	ptesting "github.com/pulumi/pulumi/sdk/v3/go/common/testing"
 	pulumi_workspace "github.com/pulumi/pulumi/sdk/v3/go/common/workspace"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
@@ -199,9 +205,9 @@ func TestAgentModeUsesPulumiAPIAndLoginManagerWhenPulumiCredentialsUnreadable(t 
 	esc := &escCommand{
 		command: "esc",
 		login:   login,
-		newClient: func(userAgent, backendURL, accessToken string, insecure bool) client.Client {
-			assert.Equal(t, "http://localhost:8080", backendURL)
-			assert.Equal(t, "agent-access-token", accessToken)
+		newClient: func(userAgent string, credentials auth.Credentials) client.Client {
+			assert.Equal(t, "http://localhost:8080", credentials.BackendURL)
+			assert.Equal(t, "agent-access-token", credentials.Account.AccessToken)
 			return &testPulumiClient{defaultOrg: "agent-org"}
 		},
 		ws: &pkgWorkspace.MockContext{
@@ -230,8 +236,8 @@ func TestPulumiBackendURLEnvOverridesPulumiAPI(t *testing.T) {
 	esc := &escCommand{
 		command: "esc",
 		login:   login,
-		newClient: func(userAgent, backendURL, accessToken string, insecure bool) client.Client {
-			assert.Equal(t, "http://localhost:8081", backendURL)
+		newClient: func(userAgent string, credentials auth.Credentials) client.Client {
+			assert.Equal(t, "http://localhost:8081", credentials.BackendURL)
 			return &testPulumiClient{defaultOrg: "agent-org"}
 		},
 		ws: &pkgWorkspace.MockContext{
@@ -303,8 +309,9 @@ func TestEnvVarOverridesAccounts(t *testing.T) {
 		command: "esc",
 		login:   &testLoginManager{creds: creds},
 		ws:      mockWorkspace(creds),
-		newClient: func(userAgent, backendURL, accessToken string, insecure bool) client.Client {
-			return client.New(userAgent, backendURL, accessToken, insecure)
+		newClient: func(userAgent string, credentials auth.Credentials) client.Client {
+			return client.New(
+				userAgent, credentials.BackendURL, credentials.Account.AccessToken, credentials.Account.Insecure)
 		},
 	}
 
@@ -353,7 +360,7 @@ func TestDefaultOrgConfiguration(t *testing.T) {
 			command: "esc",
 			login:   &testLoginManager{creds: creds},
 			ws:      mockWorkspace(creds),
-			newClient: func(userAgent, backendURL, accessToken string, insecure bool) client.Client {
+			newClient: func(userAgent string, credentials auth.Credentials) client.Client {
 				return &testClient
 			},
 		}
@@ -377,7 +384,7 @@ func TestDefaultOrgConfiguration(t *testing.T) {
 			command: "esc",
 			login:   &testLoginManager{creds: creds},
 			ws:      mockWorkspace(creds),
-			newClient: func(userAgent, backendURL, accessToken string, insecure bool) client.Client {
+			newClient: func(userAgent string, credentials auth.Credentials) client.Client {
 				return &testClient
 			},
 		}
@@ -406,7 +413,7 @@ func TestDefaultOrgConfiguration(t *testing.T) {
 			command: "esc",
 			login:   &testLoginManager{creds: creds},
 			ws:      mockWorkspace(creds),
-			newClient: func(userAgent, backendURL, accessToken string, insecure bool) client.Client {
+			newClient: func(userAgent string, credentials auth.Credentials) client.Client {
 				return &testClient
 			},
 		}
@@ -432,7 +439,7 @@ func TestDefaultOrgConfiguration(t *testing.T) {
 			command: "esc",
 			login:   &testLoginManager{creds: creds},
 			ws:      mockWorkspace(creds),
-			newClient: func(userAgent, backendURL, accessToken string, insecure bool) client.Client {
+			newClient: func(userAgent string, credentials auth.Credentials) client.Client {
 				return &testClient
 			},
 		}
@@ -444,4 +451,111 @@ func TestDefaultOrgConfiguration(t *testing.T) {
 		require.NoError(t, err)
 		assert.Equal(t, username, esc.account.DefaultOrg)
 	})
+}
+
+func TestCredentialHelperSelection(t *testing.T) {
+	for _, tt := range []struct {
+		name           string
+		projectBackend string
+		wantSelected   string
+		wantBackend    string
+	}{
+		{name: "nothing selected", wantBackend: "https://helper.example.com"},
+		{
+			name: "project backend", projectBackend: "s3://project-state",
+			wantSelected: "https://api.pulumi.com", wantBackend: "https://api.pulumi.com",
+		},
+	} {
+		t.Run(tt.name, func(t *testing.T) {
+			ptesting.IsolateCredentials(t)
+			t.Setenv("PULUMI_API", "")
+			var requests []credentialhelper.Request
+			session := auth.NewSessionWithHelperFunc(func(
+				_ context.Context, request credentialhelper.Request,
+			) (*credentialhelper.Response, error) {
+				requests = append(requests, request)
+				if request.SelectedBackendURL != "" {
+					return nil, nil
+				}
+				return &credentialhelper.Response{BackendURL: "https://helper.example.com"}, nil
+			})
+			esc := &escCommand{
+				command: "esc",
+				login:   &provisioningLoginManager{},
+				session: session,
+				newClient: func(userAgent string, credentials auth.Credentials) client.Client {
+					return &testPulumiClient{}
+				},
+				ws: &pkgWorkspace.MockContext{
+					ReadProjectF: func(string) (*pulumi_workspace.Project, string, error) {
+						project := &pulumi_workspace.Project{}
+						if tt.projectBackend != "" {
+							project.Backend = &pulumi_workspace.ProjectBackend{URL: tt.projectBackend}
+						}
+						return project, "", nil
+					},
+				},
+			}
+
+			require.NoError(t, esc.getCachedClient(t.Context()))
+			require.Len(t, requests, 1)
+			assert.Equal(t, tt.wantSelected, requests[0].SelectedBackendURL)
+			assert.Equal(t, tt.wantBackend, esc.account.BackendURL)
+			credentials, err := pulumi_workspace.GetStoredCredentials()
+			require.NoError(t, err)
+			if tt.projectBackend == "" {
+				assert.Equal(t, tt.wantBackend, credentials.Current)
+			} else {
+				assert.Empty(t, credentials.Current)
+			}
+		})
+	}
+}
+
+func TestDefaultOrgUsesAuthenticatedIdentity(t *testing.T) {
+	for _, stored := range []bool{false, true} {
+		t.Run(fmt.Sprintf("stored=%v", stored), func(t *testing.T) {
+			ptesting.IsolateCredentials(t)
+			t.Setenv("PULUMI_DEFAULT_ORGANIZATION", "")
+			server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+				assert.Equal(t, "token helper-token", r.Header.Get("Authorization"))
+				assert.Equal(t, "helper-header", r.Header.Get("X-Test-Auth"))
+				_, err := io.WriteString(w, `{"githubLogin":"helper-user"}`)
+				require.NoError(t, err)
+			}))
+			t.Cleanup(server.Close)
+			t.Setenv("PULUMI_BACKEND_URL", server.URL)
+			session := auth.NewSessionWithHelperFunc(func(
+				_ context.Context, request credentialhelper.Request,
+			) (*credentialhelper.Response, error) {
+				return &credentialhelper.Response{
+					BackendURL:  request.SelectedBackendURL,
+					AccessToken: "helper-token",
+					Headers:     http.Header{"X-Test-Auth": {"helper-header"}},
+				}, nil
+			})
+			creds := pulumi_workspace.Credentials{Current: server.URL}
+			if stored {
+				creds.Accounts = map[string]pulumi_workspace.Account{
+					server.URL: {AccessToken: "stored-token", Username: "stored-user"},
+				}
+			}
+			testClient := &testPulumiClient{}
+			esc := newESC(&Options{
+				Session: session,
+				ws:      mockWorkspace(creds),
+				newClient: func(_ string, credentials auth.Credentials) client.Client {
+					assert.Equal(t, server.URL, credentials.BackendURL)
+					assert.Equal(t, "helper-user", credentials.Account.Username)
+					assert.Empty(t, credentials.Account.AccessToken)
+					assert.Same(t, session.HTTPAuth(server.URL), credentials.HTTPAuth)
+					return testClient
+				},
+			})
+
+			require.NoError(t, esc.getCachedClient(t.Context()))
+			assert.Same(t, testClient, esc.client)
+			assert.Equal(t, "helper-user", esc.account.DefaultOrg)
+		})
+	}
 }
