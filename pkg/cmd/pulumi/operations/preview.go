@@ -464,7 +464,7 @@ func NewPreviewCmd() *cobra.Command {
 				return deployment.RunDeployment(ctx, ws, cmd, displayOpts, apitype.Preview, stackName, url, remoteArgs)
 			}
 
-			isDIYBackend, err := cmdBackend.IsDIYBackend(ws, displayOpts)
+			isDIYBackend, err := cmdBackend.IsDIYBackend(ctx, ws, cmdBackend.DefaultLoginManager)
 			if err != nil {
 				return err
 			}
