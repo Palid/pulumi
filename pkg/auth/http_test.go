@@ -110,7 +110,7 @@ func TestHTTPAuthRefreshPolicy(t *testing.T) {
 					next.AccessToken = "helper-refreshed"
 				}
 				return next, nil
-			})
+			}, &helperOutput{})
 			var tokens, gates []string
 			base := roundTripperFunc(func(req *http.Request) (*http.Response, error) {
 				tokens = append(tokens, req.Header.Get("Authorization"))
@@ -146,7 +146,7 @@ func TestHTTPAuthSingleRefreshAcrossRequests(t *testing.T) {
 		func(context.Context, credentialhelper.Request) (*credentialhelper.Response, error) {
 			calls++
 			return &credentialhelper.Response{Headers: http.Header{"X-Gate": {"new"}}}, nil
-		})
+		}, &helperOutput{})
 	base := roundTripperFunc(func(*http.Request) (*http.Response, error) {
 		return httpResponse(http.StatusUnauthorized), nil
 	})
@@ -185,7 +185,7 @@ func TestHTTPAuthLeavesOtherRequestsAlone(t *testing.T) {
 	}, func(context.Context, credentialhelper.Request) (*credentialhelper.Response, error) {
 		t.Error("the helper must not run for a request that is not a backend API call")
 		return nil, nil
-	})
+	}, &helperOutput{})
 	base := roundTripperFunc(func(req *http.Request) (*http.Response, error) {
 		assert.Empty(t, req.Header.Get("Authorization"))
 		assert.Empty(t, req.Header.Get("X-Gate"))
@@ -206,7 +206,7 @@ func TestHTTPAuthRefreshMustKeepToken(t *testing.T) {
 			context.Context, credentialhelper.Request,
 		) (*credentialhelper.Response, error) {
 			return next, nil
-		})
+		}, &helperOutput{})
 		base := roundTripperFunc(func(*http.Request) (*http.Response, error) {
 			return httpResponse(http.StatusUnauthorized), nil
 		})
@@ -228,7 +228,7 @@ func TestHTTPAuthRefreshMustNotStartSupplyingToken(t *testing.T) {
 		context.Context, credentialhelper.Request,
 	) (*credentialhelper.Response, error) {
 		return &credentialhelper.Response{AccessToken: "late-token"}, nil
-	})
+	}, &helperOutput{})
 	base := roundTripperFunc(func(*http.Request) (*http.Response, error) {
 		return httpResponse(http.StatusUnauthorized), nil
 	})
@@ -253,7 +253,7 @@ func TestHTTPAuthConcurrentRefresh(t *testing.T) {
 				return nil, refreshErr
 			}
 			return &credentialhelper.Response{AccessToken: "unchanged", Headers: http.Header{"X-Gate": {"new"}}}, nil
-		})
+		}, &helperOutput{})
 		var initial sync.WaitGroup
 		initial.Add(requests)
 		base := roundTripperFunc(func(req *http.Request) (*http.Response, error) {
@@ -308,7 +308,7 @@ func TestHTTPAuthConcurrentExpiry(t *testing.T) {
 					return nil, refreshErr
 				}
 				return &credentialhelper.Response{AccessToken: "renewed"}, nil
-			})
+			}, nil)
 			base := roundTripperFunc(func(req *http.Request) (*http.Response, error) {
 				assert.Equal(t, "token renewed", req.Header.Get("Authorization"))
 				return httpResponse(http.StatusOK), nil
@@ -365,7 +365,7 @@ func TestHTTPAuthReplacesExpiry(t *testing.T) {
 		func(context.Context, credentialhelper.Request) (*credentialhelper.Response, error) {
 			calls++
 			return &credentialhelper.Response{AccessToken: "new"}, nil
-		})
+		}, &helperOutput{})
 	base := roundTripperFunc(func(req *http.Request) (*http.Response, error) {
 		assert.Equal(t, "token new", req.Header.Get("Authorization"))
 		return httpResponse(http.StatusOK), nil
@@ -395,7 +395,7 @@ func TestHTTPAuthRedirectScope(t *testing.T) {
 		t.Run(target, func(t *testing.T) {
 			a := newHTTPAuth(testBackendURL,
 				&credentialhelper.Response{AccessToken: "helper", Headers: http.Header{"X-Gate": {"secret"}}},
-				nil)
+				nil, &helperOutput{})
 			var calls int
 			base := roundTripperFunc(func(req *http.Request) (*http.Response, error) {
 				calls++
