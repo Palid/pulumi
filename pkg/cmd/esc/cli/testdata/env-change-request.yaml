@@ -5,6 +5,7 @@ run: |
   esc env change-request ls default/test --status pending
   esc env change-request ls default/test --status applied
   esc env change-request ls default/test
+  esc env change-request list --env default/test
   esc env change-request get 00000000-0000-0000-0000-000000000000
   esc env change-request comment 00000000-0000-0000-0000-000000000000 -m "looks good"
   esc env change-request approve 00000000-0000-0000-0000-000000000000 -m lgtm
@@ -38,6 +39,12 @@ Change request submitted
 └──────────────────────────────────────┴─────────┴───────────┘
 > esc env change-request ls default/test --status applied
 > esc env change-request ls default/test
+┌──────────────────────────────────────┬───────────┐
+│ ID                                   │ AUTHOR    │
+├──────────────────────────────────────┼───────────┤
+│ 00000000-0000-0000-0000-000000000000 │ test-user │
+└──────────────────────────────────────┴───────────┘
+> esc env change-request list --env default/test
 ┌──────────────────────────────────────┬───────────┐
 │ ID                                   │ AUTHOR    │
 ├──────────────────────────────────────┼───────────┤
@@ -152,6 +159,7 @@ values:
 > esc env change-request ls default/test --status applied
 No change requests found.
 > esc env change-request ls default/test
+> esc env change-request list --env default/test
 > esc env change-request get 00000000-0000-0000-0000-000000000000
 > esc env change-request comment 00000000-0000-0000-0000-000000000000 -m looks good
 Added comment to change request 00000000-0000-0000-0000-000000000000

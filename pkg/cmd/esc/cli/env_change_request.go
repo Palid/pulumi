@@ -49,7 +49,7 @@ func newEnvChangeRequestCmd(env *envCommand) *cobra.Command {
 			"rebasing change requests.",
 		Example: fmt.Sprintf("  # Propose a change, then review and apply it\n"+
 			"  %[1]s env set my-project/prod app.replicas 3 --draft\n"+
-			"  %[1]s env change-request ls my-project/prod\n"+
+			"  %[1]s env change-request list --env my-project/prod\n"+
 			"  %[1]s env change-request get <change-request-id>\n"+
 			"  %[1]s env change-request approve <change-request-id> -m \"Looks good\"\n"+
 			"  %[1]s env change-request apply <change-request-id>", env.esc.command),
@@ -98,11 +98,11 @@ func newEnvChangeRequestLsCmd(cr *changeRequestCommand) *cobra.Command {
 			"This command lists the open change requests in an organization, optionally filtered to a single environment.\n" +
 			"Use --status to list change requests with a different status.\n",
 		Example: fmt.Sprintf("  # List open change requests in your default organization\n"+
-			"  %[1]s env change-request ls\n\n"+
+			"  %[1]s env change-request list\n\n"+
 			"  # List open change requests for one environment\n"+
-			"  %[1]s env change-request ls my-project/prod\n\n"+
+			"  %[1]s env change-request list --env my-project/prod\n\n"+
 			"  # List change requests with any status in another organization, as JSON\n"+
-			"  %[1]s env change-request ls --org my-org --status all --output json", cr.env.esc.command),
+			"  %[1]s env change-request list --org my-org --status all --output json", cr.env.esc.command),
 		Args: cobra.MaximumNArgs(1),
 		RunE: func(cmd *cobra.Command, args []string) error {
 			ctx := cmd.Context()
