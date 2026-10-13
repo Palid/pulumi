@@ -40,8 +40,19 @@ func newEnvChangeRequestCmd(env *envCommand) *cobra.Command {
 		Short: "Manage change requests",
 		Long: "Manage change requests\n" +
 			"\n" +
-			"Change requests are created by commands that accept --draft, such as `env edit` and `env set`.\n" +
-			"Subcommands exist for listing, viewing, approving, applying, closing, and rebasing change requests.",
+			"When an environment is protected by approval rules, changes to it go through a change request\n" +
+			"that must be approved before it is applied. Change requests are created by commands that accept\n" +
+			"--draft, such as `env edit`, `env set`, and `env version rollback`. Use `env open --draft=<id>`\n" +
+			"to open the draft version of an environment.\n" +
+			"\n" +
+			"Subcommands exist for listing, viewing, approving, applying, closing, commenting on, and\n" +
+			"rebasing change requests.",
+		Example: fmt.Sprintf("  # Propose a change, then review and apply it\n"+
+			"  %[1]s env set my-project/prod app.replicas 3 --draft\n"+
+			"  %[1]s env change-request ls my-project/prod\n"+
+			"  %[1]s env change-request get <change-request-id>\n"+
+			"  %[1]s env change-request approve <change-request-id> -m \"Looks good\"\n"+
+			"  %[1]s env change-request apply <change-request-id>", env.esc.command),
 		Args: cobra.NoArgs,
 	}
 
@@ -86,6 +97,12 @@ func newEnvChangeRequestLsCmd(cr *changeRequestCommand) *cobra.Command {
 			"\n" +
 			"This command lists the open change requests in an organization, optionally filtered to a single environment.\n" +
 			"Use --status to list change requests with a different status.\n",
+		Example: fmt.Sprintf("  # List open change requests in your default organization\n"+
+			"  %[1]s env change-request ls\n\n"+
+			"  # List open change requests for one environment\n"+
+			"  %[1]s env change-request ls my-project/prod\n\n"+
+			"  # List change requests with any status in another organization, as JSON\n"+
+			"  %[1]s env change-request ls --org my-org --status all --output json", cr.env.esc.command),
 		Args: cobra.MaximumNArgs(1),
 		RunE: func(cmd *cobra.Command, args []string) error {
 			ctx := cmd.Context()
@@ -142,7 +159,7 @@ func newEnvChangeRequestLsCmd(cr *changeRequestCommand) *cobra.Command {
 			}
 
 			if len(changeRequests) == 0 {
-				fmt.Fprintln(cr.env.esc.stdout, "No change requests found.")
+				fmt.Fprintln(cr.env.esc.stderr, "No change requests found.")
 				return nil
 			}
 
@@ -196,7 +213,13 @@ func newEnvChangeRequestGetCmd(cr *changeRequestCommand) *cobra.Command {
 		Short: "Show a change request.",
 		Long: "Show a change request\n" +
 			"\n" +
-			"This command shows a change request's status, description, approvals, and revisions.\n",
+			"This command shows a change request's status, description, and approvals, and the environment\n" +
+			"revision the draft is based on. If the environment has changed since then, use\n" +
+			"`env change-request rebase` to bring the draft up to date.\n",
+		Example: fmt.Sprintf("  # Show a change request\n"+
+			"  %[1]s env change-request get <change-request-id>\n\n"+
+			"  # Show a change request as JSON\n"+
+			"  %[1]s env change-request get <change-request-id> --output json", cr.env.esc.command),
 		Args: cobra.ExactArgs(1),
 		RunE: func(cmd *cobra.Command, args []string) error {
 			ctx := cmd.Context()
@@ -301,7 +324,12 @@ func newEnvChangeRequestApproveCmd(cr *changeRequestCommand) *cobra.Command {
 		Short: "Approve a change request.",
 		Long: "Approve a change request\n" +
 			"\n" +
-			"This command approves the latest revision of a change request.\n",
+			"This command approves the latest revision of a change request. Use `env change-request get`\n" +
+			"to see how many approvals are still required.\n",
+		Example: fmt.Sprintf("  # Approve a change request\n"+
+			"  %[1]s env change-request approve <change-request-id>\n\n"+
+			"  # Approve with a comment\n"+
+			"  %[1]s env change-request approve <change-request-id> -m \"Looks good\"", cr.env.esc.command),
 		Args: cobra.ExactArgs(1),
 		RunE: func(cmd *cobra.Command, args []string) error {
 			ctx := cmd.Context()
@@ -320,7 +348,7 @@ func newEnvChangeRequestApproveCmd(cr *changeRequestCommand) *cobra.Command {
 				return fmt.Errorf("approving change request: %w", err)
 			}
 
-			fmt.Fprintf(cr.env.esc.stdout, "Approved revision %v of change request %v\n", c.LatestRevisionNumber, c.ID)
+			fmt.Fprintf(cr.env.esc.stderr, "Approved revision %v of change request %v\n", c.LatestRevisionNumber, c.ID)
 			return nil
 		},
 	}
@@ -336,8 +364,10 @@ func newEnvChangeRequestUnapproveCmd(cr *changeRequestCommand) *cobra.Command {
 		Short: "Remove your approval from a change request.",
 		Long: "Remove your approval from a change request\n" +
 			"\n" +
-			"This command removes your approval from a change request.\n",
-		Args: cobra.ExactArgs(1),
+			"This command withdraws an approval you gave earlier, for example if you approved by mistake.\n" +
+			"To reject a change request outright, use `env change-request close`.\n",
+		Example: fmt.Sprintf("  %[1]s env change-request unapprove <change-request-id>", cr.env.esc.command),
+		Args:    cobra.ExactArgs(1),
 		RunE: func(cmd *cobra.Command, args []string) error {
 			ctx := cmd.Context()
 
@@ -350,7 +380,7 @@ func newEnvChangeRequestUnapproveCmd(cr *changeRequestCommand) *cobra.Command {
 				return fmt.Errorf("removing approval: %w", err)
 			}
 
-			fmt.Fprintf(cr.env.esc.stdout, "Removed approval from change request %v\n", args[0])
+			fmt.Fprintf(cr.env.esc.stderr, "Removed approval from change request %v\n", args[0])
 			return nil
 		},
 	}
@@ -364,8 +394,10 @@ func newEnvChangeRequestApplyCmd(cr *changeRequestCommand) *cobra.Command {
 		Short: "Apply a change request.",
 		Long: "Apply a change request\n" +
 			"\n" +
-			"This command applies an approved change request.\n",
-		Args: cobra.ExactArgs(1),
+			"This command applies an approved change request, making its changes to the environment.\n" +
+			"The change request must have all required approvals.\n",
+		Example: fmt.Sprintf("  %[1]s env change-request apply <change-request-id>", cr.env.esc.command),
+		Args:    cobra.ExactArgs(1),
 		RunE: func(cmd *cobra.Command, args []string) error {
 			ctx := cmd.Context()
 
@@ -388,9 +420,9 @@ func newEnvChangeRequestApplyCmd(cr *changeRequestCommand) *cobra.Command {
 				return writeJSON(cr.env.esc.stdout, result)
 			}
 
-			fmt.Fprintf(cr.env.esc.stdout, "Applied change request %v\n", args[0])
+			fmt.Fprintf(cr.env.esc.stderr, "Applied change request %v\n", args[0])
 			if result.Message != "" {
-				fmt.Fprintln(cr.env.esc.stdout, result.Message)
+				fmt.Fprintln(cr.env.esc.stderr, result.Message)
 			}
 			return nil
 		},
@@ -409,7 +441,13 @@ func newEnvChangeRequestCloseCmd(cr *changeRequestCommand) *cobra.Command {
 		Short: "Close a change request.",
 		Long: "Close a change request\n" +
 			"\n" +
-			"This command closes a change request without applying it.\n",
+			"This command closes a change request without applying it. A closed change request cannot be\n" +
+			"reopened.\n",
+		Example: fmt.Sprintf("  # Close a change request\n"+
+			"  %[1]s env change-request close <change-request-id>\n\n"+
+			"  # Close with a comment explaining why\n"+
+			"  %[1]s env change-request close <change-request-id> -m \"Superseded by another change\"",
+			cr.env.esc.command),
 		Args: cobra.ExactArgs(1),
 		RunE: func(cmd *cobra.Command, args []string) error {
 			ctx := cmd.Context()
@@ -423,7 +461,7 @@ func newEnvChangeRequestCloseCmd(cr *changeRequestCommand) *cobra.Command {
 				return fmt.Errorf("closing change request: %w", err)
 			}
 
-			fmt.Fprintf(cr.env.esc.stdout, "Closed change request %v\n", args[0])
+			fmt.Fprintf(cr.env.esc.stderr, "Closed change request %v\n", args[0])
 			return nil
 		},
 	}
@@ -441,7 +479,10 @@ func newEnvChangeRequestCommentCmd(cr *changeRequestCommand) *cobra.Command {
 		Short: "Comment on a change request.",
 		Long: "Comment on a change request\n" +
 			"\n" +
-			"This command adds a comment to a change request.\n",
+			"This command adds a comment to a change request. To comment while approving or closing,\n" +
+			"use -m on `env change-request approve` or `env change-request close`.\n",
+		Example: fmt.Sprintf("  %[1]s env change-request comment <change-request-id> -m \"Can we lower the TTL?\"",
+			cr.env.esc.command),
 		Args: cobra.ExactArgs(1),
 		RunE: func(cmd *cobra.Command, args []string) error {
 			ctx := cmd.Context()
@@ -455,7 +496,7 @@ func newEnvChangeRequestCommentCmd(cr *changeRequestCommand) *cobra.Command {
 				return fmt.Errorf("adding comment: %w", err)
 			}
 
-			fmt.Fprintf(cr.env.esc.stdout, "Added comment to change request %v\n", args[0])
+			fmt.Fprintf(cr.env.esc.stderr, "Added comment to change request %v\n", args[0])
 			return nil
 		},
 	}
@@ -477,7 +518,8 @@ func newEnvChangeRequestRebaseCmd(cr *changeRequestCommand) *cobra.Command {
 			"This command replays a draft's changes onto the environment's current revision.\n" +
 			"If the draft conflicts with the current revision, the draft is left unchanged and\n" +
 			"each conflicting line range is printed from both the environment and the draft.\n",
-		Args: cobra.ExactArgs(1),
+		Example: fmt.Sprintf("  %[1]s env change-request rebase <change-request-id>", cr.env.esc.command),
+		Args:    cobra.ExactArgs(1),
 		RunE: func(cmd *cobra.Command, args []string) error {
 			ctx := cmd.Context()
 
@@ -510,7 +552,7 @@ func newEnvChangeRequestRebaseCmd(cr *changeRequestCommand) *cobra.Command {
 					return err
 				}
 			} else if len(resp.Conflicts) == 0 {
-				fmt.Fprintf(cr.env.esc.stdout, "Rebased change request %v (revision %v)\n", c.ID, resp.DraftRevisionNumber)
+				fmt.Fprintf(cr.env.esc.stderr, "Rebased change request %v (revision %v)\n", c.ID, resp.DraftRevisionNumber)
 			} else {
 				envYAML, _, _, err := cr.env.esc.client.GetEnvironment(
 					ctx, orgName, ref.projectName, ref.envName, "", false)

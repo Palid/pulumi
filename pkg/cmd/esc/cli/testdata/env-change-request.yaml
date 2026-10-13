@@ -37,7 +37,6 @@ Change request submitted
 │ 00000000-0000-0000-0000-000000000000 │ pending │ test-user │
 └──────────────────────────────────────┴─────────┴───────────┘
 > esc env change-request ls default/test --status applied
-No change requests found.
 > esc env change-request ls default/test
 ┌──────────────────────────────────────┬───────────┐
 │ ID                                   │ AUTHOR    │
@@ -58,15 +57,10 @@ Approved: false
   Require approval (not satisfied): 0 of 1 approvals
 URL: https://app.fake.pulumi.com/test-user/esc/default/test?version=00000000-0000-0000-0000-000000000000
 > esc env change-request comment 00000000-0000-0000-0000-000000000000 -m looks good
-Added comment to change request 00000000-0000-0000-0000-000000000000
 > esc env change-request approve 00000000-0000-0000-0000-000000000000 -m lgtm
-Approved revision 1 of change request 00000000-0000-0000-0000-000000000000
 > esc env change-request unapprove 00000000-0000-0000-0000-000000000000
-Removed approval from change request 00000000-0000-0000-0000-000000000000
 > esc env change-request approve 00000000-0000-0000-0000-000000000000
-Approved revision 1 of change request 00000000-0000-0000-0000-000000000000
 > esc env change-request rebase 00000000-0000-0000-0000-000000000000
-Rebased change request 00000000-0000-0000-0000-000000000000 (revision 1)
 > esc env change-request get 00000000-0000-0000-0000-000000000000 --output json
 {
   "id": "00000000-0000-0000-0000-000000000000",
@@ -112,9 +106,7 @@ Rebased change request 00000000-0000-0000-0000-000000000000 (revision 1)
   "url": "https://app.fake.pulumi.com/test-user/esc/default/test?version=00000000-0000-0000-0000-000000000000"
 }
 > esc env change-request apply 00000000-0000-0000-0000-000000000000
-Applied change request 00000000-0000-0000-0000-000000000000
 > esc env change-request ls
-No change requests found.
 > esc env change-request ls --status all --output json
 {
   "changeRequests": [
@@ -158,15 +150,23 @@ values:
 > esc env change-request ls
 > esc env change-request ls default/test --status pending
 > esc env change-request ls default/test --status applied
+No change requests found.
 > esc env change-request ls default/test
 > esc env change-request get 00000000-0000-0000-0000-000000000000
 > esc env change-request comment 00000000-0000-0000-0000-000000000000 -m looks good
+Added comment to change request 00000000-0000-0000-0000-000000000000
 > esc env change-request approve 00000000-0000-0000-0000-000000000000 -m lgtm
+Approved revision 1 of change request 00000000-0000-0000-0000-000000000000
 > esc env change-request unapprove 00000000-0000-0000-0000-000000000000
+Removed approval from change request 00000000-0000-0000-0000-000000000000
 > esc env change-request approve 00000000-0000-0000-0000-000000000000
+Approved revision 1 of change request 00000000-0000-0000-0000-000000000000
 > esc env change-request rebase 00000000-0000-0000-0000-000000000000
+Rebased change request 00000000-0000-0000-0000-000000000000 (revision 1)
 > esc env change-request get 00000000-0000-0000-0000-000000000000 --output json
 > esc env change-request apply 00000000-0000-0000-0000-000000000000
+Applied change request 00000000-0000-0000-0000-000000000000
 > esc env change-request ls
+No change requests found.
 > esc env change-request ls --status all --output json
 > esc env get default/test

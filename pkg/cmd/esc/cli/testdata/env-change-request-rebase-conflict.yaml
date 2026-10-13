@@ -40,7 +40,6 @@ Conflict 1:
        1 | values:
        2 |   foo: bar
 > esc env change-request close 00000000-0000-0000-0000-000000000000 -m superseded
-Closed change request 00000000-0000-0000-0000-000000000000
 > esc env change-request ls --status closed
 ┌──────────────────────────────────────┬──────────────┬────────┬───────────┐
 │ ID                                   │ ENVIRONMENT  │ STATUS │ AUTHOR    │
@@ -64,6 +63,7 @@ Closed change request 00000000-0000-0000-0000-000000000000
 > esc env change-request rebase 00000000-0000-0000-0000-000000000000
 Error: rebase of change request 00000000-0000-0000-0000-000000000000 has 1 conflict(s); the draft was not changed
 > esc env change-request close 00000000-0000-0000-0000-000000000000 -m superseded
+Closed change request 00000000-0000-0000-0000-000000000000
 > esc env change-request ls --status closed
 > esc env change-request ls --status all
 > esc env change-request comment 00000000-0000-0000-0000-000000000000
