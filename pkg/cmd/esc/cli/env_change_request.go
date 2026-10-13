@@ -25,6 +25,7 @@ import (
 	"github.com/spf13/cobra"
 
 	"github.com/pulumi/pulumi/pkg/v3/cmd/esc/cli/client"
+	"github.com/pulumi/pulumi/sdk/v3/go/common/diag/colors"
 )
 
 type changeRequestCommand struct {
@@ -79,6 +80,29 @@ func (cr *changeRequestCommand) orgName(ctx context.Context) (string, error) {
 		return cr.org, nil
 	}
 	return cr.env.esc.account.DefaultOrg, nil
+}
+
+func (cr *changeRequestCommand) warnNoop(msg, comment string) {
+	if comment != "" {
+		msg += " The comment was not posted."
+	}
+	fmt.Fprint(cr.env.esc.stderr,
+		cr.env.esc.colors.Colorize(fmt.Sprintf("%swarning: %v%s\n", colors.SpecWarning, msg, colors.Reset)))
+}
+
+func (cr *changeRequestCommand) hasApproved(ctx context.Context, c *client.GetChangeRequestResponse) (bool, error) {
+	user, _, _, err := cr.env.esc.client.GetPulumiAccountDetails(ctx)
+	if err != nil {
+		return false, fmt.Errorf("getting current user: %w", err)
+	}
+	for _, g := range c.GateEvaluation.ApplicableGates {
+		for _, a := range g.RuleDetails.Approvers {
+			if a.GithubLogin == user {
+				return true, nil
+			}
+		}
+	}
+	return false, nil
 }
 
 func (cr *changeRequestCommand) envRef(orgName string, c *client.ChangeRequest) environmentRef {
@@ -343,6 +367,15 @@ func newEnvChangeRequestApproveCmd(cr *changeRequestCommand) *cobra.Command {
 			if err != nil {
 				return fmt.Errorf("getting change request: %w", err)
 			}
+			approved, err := cr.hasApproved(ctx, c)
+			if err != nil {
+				return err
+			}
+			if approved {
+				cr.warnNoop(fmt.Sprintf("You already approved revision %v of change request %v.",
+					c.LatestRevisionNumber, c.ID), comment)
+				return nil
+			}
 			err = cr.env.esc.client.ApproveChangeRequest(ctx, orgName, c.ID, c.LatestRevisionNumber, comment)
 			if err != nil {
 				return fmt.Errorf("approving change request: %w", err)
@@ -376,11 +409,24 @@ func newEnvChangeRequestUnapproveCmd(cr *changeRequestCommand) *cobra.Command {
 				return err
 			}
 
-			if err := cr.env.esc.client.UnapproveChangeRequest(ctx, orgName, args[0]); err != nil {
+			c, err := cr.env.esc.client.GetChangeRequest(ctx, orgName, args[0])
+			if err != nil {
+				return fmt.Errorf("getting change request: %w", err)
+			}
+			approved, err := cr.hasApproved(ctx, c)
+			if err != nil {
+				return err
+			}
+			if !approved {
+				cr.warnNoop(fmt.Sprintf("You have not approved change request %v.", c.ID), "")
+				return nil
+			}
+
+			if err := cr.env.esc.client.UnapproveChangeRequest(ctx, orgName, c.ID); err != nil {
 				return fmt.Errorf("removing approval: %w", err)
 			}
 
-			fmt.Fprintf(cr.env.esc.stderr, "Removed approval from change request %v\n", args[0])
+			fmt.Fprintf(cr.env.esc.stderr, "Removed approval from change request %v\n", c.ID)
 			return nil
 		},
 	}
@@ -411,7 +457,19 @@ func newEnvChangeRequestApplyCmd(cr *changeRequestCommand) *cobra.Command {
 				return err
 			}
 
-			result, err := cr.env.esc.client.ApplyChangeRequest(ctx, orgName, args[0])
+			c, err := cr.env.esc.client.GetChangeRequest(ctx, orgName, args[0])
+			if err != nil {
+				return fmt.Errorf("getting change request: %w", err)
+			}
+			if c.Status == "applied" {
+				cr.warnNoop(fmt.Sprintf("Change request %v is already applied.", c.ID), "")
+				if format == outputJSON {
+					return writeJSON(cr.env.esc.stdout, &client.ChangeRequestApplyResult{})
+				}
+				return nil
+			}
+
+			result, err := cr.env.esc.client.ApplyChangeRequest(ctx, orgName, c.ID)
 			if err != nil {
 				return fmt.Errorf("applying change request: %w", err)
 			}
@@ -420,7 +478,7 @@ func newEnvChangeRequestApplyCmd(cr *changeRequestCommand) *cobra.Command {
 				return writeJSON(cr.env.esc.stdout, result)
 			}
 
-			fmt.Fprintf(cr.env.esc.stderr, "Applied change request %v\n", args[0])
+			fmt.Fprintf(cr.env.esc.stderr, "Applied change request %v\n", c.ID)
 			if result.Message != "" {
 				fmt.Fprintln(cr.env.esc.stderr, result.Message)
 			}
@@ -457,11 +515,20 @@ func newEnvChangeRequestCloseCmd(cr *changeRequestCommand) *cobra.Command {
 				return err
 			}
 
-			if err := cr.env.esc.client.CloseChangeRequest(ctx, orgName, args[0], comment); err != nil {
+			c, err := cr.env.esc.client.GetChangeRequest(ctx, orgName, args[0])
+			if err != nil {
+				return fmt.Errorf("getting change request: %w", err)
+			}
+			if c.Status == "closed" {
+				cr.warnNoop(fmt.Sprintf("Change request %v is already closed.", c.ID), comment)
+				return nil
+			}
+
+			if err := cr.env.esc.client.CloseChangeRequest(ctx, orgName, c.ID, comment); err != nil {
 				return fmt.Errorf("closing change request: %w", err)
 			}
 
-			fmt.Fprintf(cr.env.esc.stderr, "Closed change request %v\n", args[0])
+			fmt.Fprintf(cr.env.esc.stderr, "Closed change request %v\n", c.ID)
 			return nil
 		},
 	}
@@ -541,6 +608,22 @@ func newEnvChangeRequestRebaseCmd(cr *changeRequestCommand) *cobra.Command {
 				return fmt.Errorf("change request %v is not an environment draft", c.ID)
 			}
 			ref := cr.envRef(orgName, &c.ChangeRequest)
+
+			status, err := cr.env.esc.client.GetEnvironmentDraftStatus(ctx, orgName, ref.projectName, ref.envName, c.ID)
+			if err != nil {
+				return fmt.Errorf("getting draft status: %w", err)
+			}
+			if status.BaseRevision == status.EnvironmentRevision {
+				cr.warnNoop(fmt.Sprintf("Change request %v is already based on the current environment revision.", c.ID), "")
+				if format == outputJSON {
+					return writeJSON(cr.env.esc.stdout, &client.EnvironmentDraftRebaseResponse{
+						ChangeRequestID:     c.ID,
+						DraftRevisionNumber: status.DraftRevisionNumber,
+						Conflicts:           []client.EnvironmentDraftConflict{},
+					})
+				}
+				return nil
+			}
 
 			resp, err := cr.env.esc.client.RebaseEnvironmentDraft(ctx, orgName, ref.projectName, ref.envName, c.ID)
 			if err != nil {

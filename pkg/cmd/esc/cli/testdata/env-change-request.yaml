@@ -9,11 +9,17 @@ run: |
   esc env change-request get 00000000-0000-0000-0000-000000000000
   esc env change-request comment 00000000-0000-0000-0000-000000000000 -m "looks good"
   esc env change-request approve 00000000-0000-0000-0000-000000000000 -m lgtm
+  esc env change-request approve 00000000-0000-0000-0000-000000000000 -m "lgtm again"
+  esc env change-request unapprove 00000000-0000-0000-0000-000000000000
   esc env change-request unapprove 00000000-0000-0000-0000-000000000000
   esc env change-request approve 00000000-0000-0000-0000-000000000000
   esc env change-request rebase 00000000-0000-0000-0000-000000000000
+  esc env change-request rebase 00000000-0000-0000-0000-000000000000 --output json
   esc env change-request get 00000000-0000-0000-0000-000000000000 --output json
   esc env change-request apply 00000000-0000-0000-0000-000000000000
+  esc env change-request apply 00000000-0000-0000-0000-000000000000
+  esc env change-request apply 00000000-0000-0000-0000-000000000000 --output json
+  esc env change-request close 00000000-0000-0000-0000-000000000000 || true
   esc env change-request ls
   esc env change-request ls --status all --output json
   esc env get default/test
@@ -65,9 +71,17 @@ Approved: false
 URL: https://app.fake.pulumi.com/test-user/esc/default/test?version=00000000-0000-0000-0000-000000000000
 > esc env change-request comment 00000000-0000-0000-0000-000000000000 -m looks good
 > esc env change-request approve 00000000-0000-0000-0000-000000000000 -m lgtm
+> esc env change-request approve 00000000-0000-0000-0000-000000000000 -m lgtm again
+> esc env change-request unapprove 00000000-0000-0000-0000-000000000000
 > esc env change-request unapprove 00000000-0000-0000-0000-000000000000
 > esc env change-request approve 00000000-0000-0000-0000-000000000000
 > esc env change-request rebase 00000000-0000-0000-0000-000000000000
+> esc env change-request rebase 00000000-0000-0000-0000-000000000000 --output json
+{
+  "changeRequestId": "00000000-0000-0000-0000-000000000000",
+  "draftRevisionNumber": 1,
+  "conflicts": []
+}
 > esc env change-request get 00000000-0000-0000-0000-000000000000 --output json
 {
   "id": "00000000-0000-0000-0000-000000000000",
@@ -113,6 +127,12 @@ URL: https://app.fake.pulumi.com/test-user/esc/default/test?version=00000000-000
   "url": "https://app.fake.pulumi.com/test-user/esc/default/test?version=00000000-0000-0000-0000-000000000000"
 }
 > esc env change-request apply 00000000-0000-0000-0000-000000000000
+> esc env change-request apply 00000000-0000-0000-0000-000000000000
+> esc env change-request apply 00000000-0000-0000-0000-000000000000 --output json
+{
+  "entityUrl": ""
+}
+> esc env change-request close 00000000-0000-0000-0000-000000000000
 > esc env change-request ls
 > esc env change-request ls --status all --output json
 {
@@ -165,15 +185,27 @@ No change requests found.
 Added comment to change request 00000000-0000-0000-0000-000000000000
 > esc env change-request approve 00000000-0000-0000-0000-000000000000 -m lgtm
 Approved revision 1 of change request 00000000-0000-0000-0000-000000000000
+> esc env change-request approve 00000000-0000-0000-0000-000000000000 -m lgtm again
+warning: You already approved revision 1 of change request 00000000-0000-0000-0000-000000000000. The comment was not posted.
 > esc env change-request unapprove 00000000-0000-0000-0000-000000000000
 Removed approval from change request 00000000-0000-0000-0000-000000000000
+> esc env change-request unapprove 00000000-0000-0000-0000-000000000000
+warning: You have not approved change request 00000000-0000-0000-0000-000000000000.
 > esc env change-request approve 00000000-0000-0000-0000-000000000000
 Approved revision 1 of change request 00000000-0000-0000-0000-000000000000
 > esc env change-request rebase 00000000-0000-0000-0000-000000000000
-Rebased change request 00000000-0000-0000-0000-000000000000 (revision 1)
+warning: Change request 00000000-0000-0000-0000-000000000000 is already based on the current environment revision.
+> esc env change-request rebase 00000000-0000-0000-0000-000000000000 --output json
+warning: Change request 00000000-0000-0000-0000-000000000000 is already based on the current environment revision.
 > esc env change-request get 00000000-0000-0000-0000-000000000000 --output json
 > esc env change-request apply 00000000-0000-0000-0000-000000000000
 Applied change request 00000000-0000-0000-0000-000000000000
+> esc env change-request apply 00000000-0000-0000-0000-000000000000
+warning: Change request 00000000-0000-0000-0000-000000000000 is already applied.
+> esc env change-request apply 00000000-0000-0000-0000-000000000000 --output json
+warning: Change request 00000000-0000-0000-0000-000000000000 is already applied.
+> esc env change-request close 00000000-0000-0000-0000-000000000000
+Error: closing change request: change request is not active
 > esc env change-request ls
 No change requests found.
 > esc env change-request ls --status all --output json

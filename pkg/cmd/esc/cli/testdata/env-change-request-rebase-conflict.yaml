@@ -5,6 +5,9 @@ run: |
   esc env change-request get 00000000-0000-0000-0000-000000000000
   esc env change-request rebase 00000000-0000-0000-0000-000000000000 || true
   esc env change-request close 00000000-0000-0000-0000-000000000000 -m superseded
+  esc env change-request close 00000000-0000-0000-0000-000000000000
+  esc env change-request close 00000000-0000-0000-0000-000000000000 -m "closing again"
+  esc env change-request approve 00000000-0000-0000-0000-000000000000 || true
   esc env change-request ls --status closed
   esc env change-request ls --status all
   esc env change-request comment 00000000-0000-0000-0000-000000000000 || true
@@ -40,6 +43,9 @@ Conflict 1:
        1 | values:
        2 |   foo: bar
 > esc env change-request close 00000000-0000-0000-0000-000000000000 -m superseded
+> esc env change-request close 00000000-0000-0000-0000-000000000000
+> esc env change-request close 00000000-0000-0000-0000-000000000000 -m closing again
+> esc env change-request approve 00000000-0000-0000-0000-000000000000
 > esc env change-request ls --status closed
 ┌──────────────────────────────────────┬──────────────┬────────┬───────────┐
 │ ID                                   │ ENVIRONMENT  │ STATUS │ AUTHOR    │
@@ -64,6 +70,12 @@ Conflict 1:
 Error: rebase of change request 00000000-0000-0000-0000-000000000000 has 1 conflict(s); the draft was not changed
 > esc env change-request close 00000000-0000-0000-0000-000000000000 -m superseded
 Closed change request 00000000-0000-0000-0000-000000000000
+> esc env change-request close 00000000-0000-0000-0000-000000000000
+warning: Change request 00000000-0000-0000-0000-000000000000 is already closed.
+> esc env change-request close 00000000-0000-0000-0000-000000000000 -m closing again
+warning: Change request 00000000-0000-0000-0000-000000000000 is already closed. The comment was not posted.
+> esc env change-request approve 00000000-0000-0000-0000-000000000000
+Error: approving change request: change request is not active
 > esc env change-request ls --status closed
 > esc env change-request ls --status all
 > esc env change-request comment 00000000-0000-0000-0000-000000000000
