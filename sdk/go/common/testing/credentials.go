@@ -47,6 +47,7 @@ func IsolateCredentials(t testing.TB) IsolatedCredentials {
 	t.Setenv("PULUMI_CREDENTIAL_STORE", "plaintext")
 
 	t.Setenv("PULUMI_ACCESS_TOKEN", "")
+	t.Setenv("PULUMI_DISABLE_AGENT_SIGNUP", "")
 	t.Setenv("PULUMI_BACKEND_URL", "")
 	t.Setenv("PULUMI_API", "")
 

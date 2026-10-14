@@ -148,6 +148,9 @@ var CredentialStore = env.String("CREDENTIAL_STORE",
 		`system (macOS Keychain, Windows Credential Manager, Linux Secret Service, TPM) when such `+
 		`protection is usable, "os" requires it, and "plaintext" uses the plaintext credentials file.`)
 
+var DisableAgentSignup = env.Bool("DISABLE_AGENT_SIGNUP",
+	"Never create an ephemeral Pulumi Cloud account when the CLI detects that an AI coding agent is running it.")
+
 var DisableSecretCache = env.Bool("DISABLE_SECRET_CACHE",
 	"Disable caching encryption operations for unchanged stack secrets.")
 

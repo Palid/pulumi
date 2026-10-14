@@ -28,6 +28,7 @@ import (
 	"github.com/pulumi/pulumi/pkg/v3/backend/backenderr"
 	"github.com/pulumi/pulumi/pkg/v3/backend/display"
 	"github.com/pulumi/pulumi/pkg/v3/backend/httpstate/client"
+	pkgWorkspace "github.com/pulumi/pulumi/pkg/v3/workspace"
 	"github.com/pulumi/pulumi/sdk/v3/go/common/apitype"
 	ptesting "github.com/pulumi/pulumi/sdk/v3/go/common/testing"
 	"github.com/pulumi/pulumi/sdk/v3/go/common/util/cmdutil"
@@ -728,4 +729,107 @@ func TestCurrentWithoutAgentSignupIgnoresRejectedAgentCredentials(t *testing.T) 
 	require.NoError(t, err)
 	assert.Nil(t, account)
 	assert.Equal(t, 0, signupCalls)
+}
+
+//nolint:paralleltest // isolates credentials with t.Setenv
+func TestCurrentWithAgentSignupDisabledDoesNotCreateAgentAccount(t *testing.T) {
+	ptesting.IsolateCredentials(t)
+
+	t.Setenv("CODEX_SANDBOX", "1")
+	t.Setenv("PULUMI_DISABLE_AGENT_SIGNUP", "true")
+
+	signupCalls := 0
+	server := httptest.NewServer(http.HandlerFunc(func(rw http.ResponseWriter, req *http.Request) {
+		if req.URL.Path == "/api/agents/signup" {
+			signupCalls++
+		}
+		rw.WriteHeader(http.StatusInternalServerError)
+	}))
+	t.Cleanup(server.Close)
+
+	account, err := NewLoginManager().Current(t.Context(), server.URL, false, true)
+	require.NoError(t, err)
+	assert.Nil(t, account)
+	assert.Equal(t, 0, signupCalls)
+
+	fromAgent, err := workspace.GetAgentAccount(server.URL)
+	require.NoError(t, err)
+	assert.False(t, fromAgent.HasCredential())
+}
+
+//nolint:paralleltest // IsolateCredentials changes process-wide environment variables.
+func TestCurrentWithSelfManagedBackendDoesNotCreateAgentAccount(t *testing.T) {
+	tests := []struct {
+		name       string
+		backendURL string
+		current    string
+	}{
+		{name: "PULUMI_BACKEND_URL file", backendURL: "file://~"},
+		{name: "PULUMI_BACKEND_URL s3", backendURL: "s3://bucket"},
+		{name: "current backend in credentials", current: "file://~"},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			ptesting.IsolateCredentials(t)
+
+			t.Setenv("CODEX_SANDBOX", "1")
+			t.Setenv("PULUMI_BACKEND_URL", tt.backendURL)
+			if tt.current != "" {
+				require.NoError(t, workspace.StoreAccount(tt.current, workspace.Account{}, true))
+			}
+
+			signupCalls := 0
+			server := httptest.NewServer(http.HandlerFunc(func(rw http.ResponseWriter, req *http.Request) {
+				if req.URL.Path == "/api/agents/signup" {
+					signupCalls++
+				}
+				rw.WriteHeader(http.StatusInternalServerError)
+			}))
+			t.Cleanup(server.Close)
+
+			account, err := NewLoginManager().Current(t.Context(), server.URL, false, false)
+			require.NoError(t, err)
+			assert.Nil(t, account)
+			assert.Equal(t, 0, signupCalls)
+		})
+	}
+}
+
+//nolint:paralleltest // sets PULUMI_BACKEND_URL with t.Setenv
+func TestSelfManagedBackendConfigured(t *testing.T) {
+	tests := []struct {
+		name       string
+		backendURL string
+		cloudURL   string
+		current    string
+		want       bool
+	}{
+		{name: "cloud", cloudURL: "https://api.pulumi.com", want: false},
+		{name: "self-managed cloud URL", cloudURL: "file://~", want: true},
+		{
+			name:       "self-managed PULUMI_BACKEND_URL",
+			backendURL: "s3://bucket",
+			cloudURL:   "https://api.pulumi.com",
+			want:       true,
+		},
+		{name: "self-managed current backend", cloudURL: "https://api.pulumi.com", current: "file://~", want: true},
+		{
+			name:       "cloud PULUMI_BACKEND_URL overrides current backend",
+			backendURL: "https://api.pulumi.com",
+			cloudURL:   "https://api.pulumi.com",
+			current:    "file://~",
+			want:       false,
+		},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Setenv("PULUMI_BACKEND_URL", tt.backendURL)
+			ws := &pkgWorkspace.MockContext{
+				GetStoredCredentialsF: func() (workspace.Credentials, error) {
+					return workspace.Credentials{Current: tt.current}, nil
+				},
+			}
+			assert.Equal(t, tt.want, selfManagedBackendConfigured(ws, tt.cloudURL))
+		})
+	}
 }

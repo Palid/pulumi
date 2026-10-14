@@ -1,0 +1,4 @@
+component: cli
+kind: fix
+body: Never create an ephemeral Pulumi Cloud account for a coding agent when a self-managed backend is configured
+time: 2026-10-14T00:00:00Z

@@ -113,6 +113,19 @@ func skipAgentSignup(ctx context.Context) bool {
 	return skip
 }
 
+// selfManagedBackendConfigured reports whether a self-managed backend is selected, either as cloudURL, through
+// PULUMI_BACKEND_URL, or as the current backend in the stored credentials.
+func selfManagedBackendConfigured(ws pkgWorkspace.Context, cloudURL string) bool {
+	if backendURL := env.BackendURL.Value(); backendURL != "" {
+		return diy.IsDIYBackendURL(backendURL)
+	}
+	if diy.IsDIYBackendURL(cloudURL) {
+		return true
+	}
+	creds, err := ws.GetStoredCredentials()
+	return err == nil && diy.IsDIYBackendURL(creds.Current)
+}
+
 type commandNameContextKey struct{}
 
 // ContextWithCommandName returns a context carrying the full invoked CLI command path
@@ -660,7 +673,8 @@ func (m defaultLoginManager) Current(
 
 // currentOrSignupAgentAccount returns valid credentials from the shared agent
 // cache, reports active claim state when cached credentials cannot
-// authenticate, or creates a new agent account when no usable state remains.
+// authenticate, or creates a new agent account when no usable state remains
+// and signup is not disabled.
 func (m defaultLoginManager) currentOrSignupAgentAccount(
 	ctx context.Context,
 	cloudURL string,
@@ -735,6 +749,15 @@ func (m defaultLoginManager) currentOrSignupAgentAccount(
 
 	if skipAgentSignup(ctx) {
 		logging.V(7).Infof("Agent signup disabled for this command; not creating a new agent account")
+		return nil, nil
+	}
+	if env.DisableAgentSignup.Value() {
+		logging.V(7).Infof("Agent signup disabled by %s; not creating a new agent account",
+			env.DisableAgentSignup.Var().Name())
+		return nil, nil
+	}
+	if selfManagedBackendConfigured(pkgWorkspace.Instance, cloudURL) {
+		logging.V(7).Infof("A self-managed backend is configured; not creating a new agent account")
 		return nil, nil
 	}
 

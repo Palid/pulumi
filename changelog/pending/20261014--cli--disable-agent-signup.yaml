@@ -1,0 +1,4 @@
+component: cli
+kind: feat
+body: Add `PULUMI_DISABLE_AGENT_SIGNUP` to stop the CLI from creating ephemeral Pulumi Cloud accounts for coding agents
+time: 2026-10-14T00:00:00Z
