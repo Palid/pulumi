@@ -254,26 +254,6 @@ type cloudBackend struct {
 // Assert we implement the backend.Backend and backend.SpecificDeploymentExporter interfaces.
 var _ backend.SpecificDeploymentExporter = &cloudBackend{}
 
-// New creates a Pulumi backend using stored credentials for the given cloud API URL.
-func New(ctx context.Context, d diag.Sink,
-	cloudURL string, project *workspace.Project, insecure bool,
-) (Backend, error) {
-	contract.Requiref(d != nil, "d", "expected a non-nil diag.Sink")
-	cloudURL = ValueOrDefaultURL(pkgWorkspace.Instance, cloudURL)
-	account, err := getBackendAccount(ctx, cloudURL)
-	if err != nil {
-		return nil, fmt.Errorf("getting stored credentials: %w", err)
-	}
-	credentials := auth.Credentials{
-		BackendURL: cloudURL,
-		Account:    account,
-		Persist: func(updated workspace.Account) error {
-			return updated.Save(cloudURL, false)
-		},
-	}
-	return NewWithCredentials(ctx, d, credentials, project, insecure)
-}
-
 // NewWithCredentials creates a Pulumi backend using the provided credentials.
 func NewWithCredentials(
 	ctx context.Context, d diag.Sink, credentials auth.Credentials, project *workspace.Project, insecure bool,
@@ -388,24 +368,6 @@ func (m defaultLoginManager) finishUserLoginWithAgentFallback(
 			}
 			return nil
 		})
-}
-
-// getBackendAccount returns account credentials for a backend, falling back to
-// the shared agent cache when an agent cannot read the default credentials.
-func getBackendAccount(ctx context.Context, cloudURL string) (workspace.Account, error) {
-	account, fromAgent, err := workspace.GetAccountWithAgentFallback(cloudURL)
-	if err != nil {
-		return workspace.Account{}, err
-	}
-	if fromAgent {
-		logging.V(7).Infof("Using backend account for %q from shared agent credentials", cloudURL)
-		MarkAgentCredentialsUsed(ctx, cloudURL)
-	} else if account.HasCredential() {
-		logging.V(7).Infof("Using backend account for %q from default credentials", cloudURL)
-	} else {
-		logging.V(7).Infof("No backend account for %q found", cloudURL)
-	}
-	return account, nil
 }
 
 // loginWithBrowser uses a web browser to log into the cloud and returns its credentials.

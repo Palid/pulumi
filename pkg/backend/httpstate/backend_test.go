@@ -38,6 +38,7 @@ import (
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
+	"github.com/pulumi/pulumi/pkg/v3/auth"
 	"github.com/pulumi/pulumi/pkg/v3/backend"
 	"github.com/pulumi/pulumi/pkg/v3/backend/backenderr"
 	"github.com/pulumi/pulumi/pkg/v3/backend/display"
@@ -84,10 +85,11 @@ func TestEnabledFullyQualifiedStackNames(t *testing.T) {
 
 	ctx := t.Context()
 
-	_, err := NewLoginManager(nil).Login(ctx, client.PulumiCloudURL, false, "", "", nil, true, display.Options{})
+	credentials, err := NewLoginManager(nil).Login(
+		ctx, client.PulumiCloudURL, false, "", "", nil, true, display.Options{})
 	require.NoError(t, err)
 
-	b, err := New(ctx, diagtest.LogSink(t), client.PulumiCloudURL, &workspace.Project{Name: "testproj"}, false)
+	b, err := NewWithCredentials(ctx, diagtest.LogSink(t), *credentials, &workspace.Project{Name: "testproj"}, false)
 	require.NoError(t, err)
 
 	stackName := ptesting.RandomStackName()
@@ -123,10 +125,11 @@ func TestDisabledFullyQualifiedStackNames(t *testing.T) {
 
 	ctx := t.Context()
 
-	_, err := NewLoginManager(nil).Login(ctx, client.PulumiCloudURL, false, "", "", nil, true, display.Options{})
+	credentials, err := NewLoginManager(nil).Login(
+		ctx, client.PulumiCloudURL, false, "", "", nil, true, display.Options{})
 	require.NoError(t, err)
 
-	b, err := New(ctx, diagtest.LogSink(t), client.PulumiCloudURL, &workspace.Project{Name: "testproj"}, false)
+	b, err := NewWithCredentials(ctx, diagtest.LogSink(t), *credentials, &workspace.Project{Name: "testproj"}, false)
 	require.NoError(t, err)
 
 	stackName := ptesting.RandomStackName()
@@ -397,20 +400,17 @@ func TestNewDefaultOrgResolution(t *testing.T) {
 			}))
 			t.Cleanup(server.Close)
 
-			err := workspace.StoreAccount(server.URL, workspace.Account{
-				AccessToken: testJWT,
-			}, true)
-			require.NoError(t, err)
-
 			if tt.configuredOrg != "" {
-				err = workspace.SetBackendConfigDefaultOrg(server.URL, tt.configuredOrg)
+				err := workspace.SetBackendConfigDefaultOrg(server.URL, tt.configuredOrg)
 				require.NoError(t, err)
 			}
 
-			b, err := New(ctx, diagtest.LogSink(t), server.URL, nil, false)
+			b, err := NewWithCredentials(ctx, diagtest.LogSink(t), auth.Credentials{
+				BackendURL: server.URL, Account: workspace.Account{AccessToken: testJWT},
+			}, nil, false)
 			require.NoError(t, err)
 
-			// New spawns goroutines that may log to the test's diag sink;
+			// NewWithCredentials spawns goroutines that may log to the test's diag sink;
 			// wait for them before the test finishes.
 			cb := b.(*cloudBackend)
 			_, _ = cb.capabilities.Result(ctx)
@@ -447,15 +447,12 @@ func TestParseStackReferenceExplicitOrgBeatsEnvVar(t *testing.T) {
 	}))
 	t.Cleanup(server.Close)
 
-	err := workspace.StoreAccount(server.URL, workspace.Account{
-		AccessToken: testJWT,
-	}, true)
+	b, err := NewWithCredentials(ctx, diagtest.LogSink(t), auth.Credentials{
+		BackendURL: server.URL, Account: workspace.Account{AccessToken: testJWT},
+	}, &workspace.Project{Name: "proj"}, false)
 	require.NoError(t, err)
 
-	b, err := New(ctx, diagtest.LogSink(t), server.URL, &workspace.Project{Name: "proj"}, false)
-	require.NoError(t, err)
-
-	// New spawns goroutines that may log to the test's diag sink;
+	// NewWithCredentials spawns goroutines that may log to the test's diag sink;
 	// wait for them before the test finishes.
 	cb := b.(*cloudBackend)
 	_, _ = cb.capabilities.Result(ctx)
@@ -478,10 +475,11 @@ func TestDisableIntegrityChecking(t *testing.T) {
 
 	ctx := t.Context()
 
-	_, err := NewLoginManager(nil).Login(ctx, client.PulumiCloudURL, false, "", "", nil, true, display.Options{})
+	credentials, err := NewLoginManager(nil).Login(
+		ctx, client.PulumiCloudURL, false, "", "", nil, true, display.Options{})
 	require.NoError(t, err)
 
-	b, err := New(ctx, diagtest.LogSink(t), client.PulumiCloudURL, &workspace.Project{Name: "testproj"}, false)
+	b, err := NewWithCredentials(ctx, diagtest.LogSink(t), *credentials, &workspace.Project{Name: "testproj"}, false)
 	require.NoError(t, err)
 
 	stackName := ptesting.RandomStackName()
@@ -633,10 +631,12 @@ func TestListStackNames(t *testing.T) {
 
 	ctx := t.Context()
 
-	_, err := NewLoginManager(nil).Login(ctx, client.PulumiCloudURL, false, "", "", nil, true, display.Options{})
+	credentials, err := NewLoginManager(nil).Login(
+		ctx, client.PulumiCloudURL, false, "", "", nil, true, display.Options{})
 	require.NoError(t, err)
 
-	b, err := New(ctx, diagtest.LogSink(t), client.PulumiCloudURL, &workspace.Project{Name: "testproj-list-stacks"}, false)
+	b, err := NewWithCredentials(
+		ctx, diagtest.LogSink(t), *credentials, &workspace.Project{Name: "testproj-list-stacks"}, false)
 	require.NoError(t, err)
 
 	// Create test stacks
@@ -748,10 +748,12 @@ func TestListStackNamesVsListStacks(t *testing.T) {
 
 	ctx := t.Context()
 
-	_, err := NewLoginManager(nil).Login(ctx, client.PulumiCloudURL, false, "", "", nil, true, display.Options{})
+	credentials, err := NewLoginManager(nil).Login(
+		ctx, client.PulumiCloudURL, false, "", "", nil, true, display.Options{})
 	require.NoError(t, err)
 
-	b, err := New(ctx, diagtest.LogSink(t), client.PulumiCloudURL, &workspace.Project{Name: "testproj-list-stacks"}, false)
+	b, err := NewWithCredentials(
+		ctx, diagtest.LogSink(t), *credentials, &workspace.Project{Name: "testproj-list-stacks"}, false)
 	require.NoError(t, err)
 
 	// Create a test stack
@@ -938,7 +940,7 @@ func TestCreateStackDeploymentSchemaVersion(t *testing.T) {
 	defer server.Client()
 
 	sink := diag.DefaultSink(io.Discard, io.Discard, diag.FormatOptions{Color: colors.Never})
-	b, err := New(ctx, sink, server.URL, nil, false)
+	b, err := NewWithCredentials(ctx, sink, auth.Credentials{BackendURL: server.URL}, nil, false)
 	require.NoError(t, err)
 
 	ref, err := b.ParseStackReference("owner/project/stack")
@@ -972,7 +974,7 @@ func TestCreateStackDeploymentSchemaVersion(t *testing.T) {
 	// Test 3: v4 supported: send v3 expect v3.
 
 	v4 = true
-	b, err = New(ctx, sink, server.URL, nil, false)
+	b, err = NewWithCredentials(ctx, sink, auth.Credentials{BackendURL: server.URL}, nil, false)
 	require.NoError(t, err)
 
 	_, err = b.CreateStack(ctx, ref, "", &apitype.UntypedDeployment{
@@ -1043,7 +1045,7 @@ func TestCreateStackDisplaysBackendMessages(t *testing.T) {
 	t.Cleanup(server.Close)
 
 	sink := diag.DefaultSink(io.Discard, io.Discard, diag.FormatOptions{Color: colors.Never})
-	b, err := New(ctx, sink, server.URL, nil, false)
+	b, err := NewWithCredentials(ctx, sink, auth.Credentials{BackendURL: server.URL}, nil, false)
 	require.NoError(t, err)
 
 	ref, err := b.ParseStackReference("owner/project/stack")
@@ -1147,7 +1149,7 @@ func TestImportDeploymentSchemaVersion(t *testing.T) {
 	defer server.Client()
 
 	sink := diag.DefaultSink(io.Discard, io.Discard, diag.FormatOptions{Color: colors.Never})
-	b, err := New(ctx, sink, server.URL, nil, false)
+	b, err := NewWithCredentials(ctx, sink, auth.Credentials{BackendURL: server.URL}, nil, false)
 	require.NoError(t, err)
 
 	ref, err := b.ParseStackReference("owner/project/stack")
@@ -1184,7 +1186,7 @@ func TestImportDeploymentSchemaVersion(t *testing.T) {
 	// Test 3: v4 supported: send v3 expect v3.
 
 	v4 = true
-	b, err = New(ctx, sink, server.URL, nil, false)
+	b, err = NewWithCredentials(ctx, sink, auth.Credentials{BackendURL: server.URL}, nil, false)
 	require.NoError(t, err)
 
 	err = b.ImportDeployment(ctx, s, &apitype.UntypedDeployment{
