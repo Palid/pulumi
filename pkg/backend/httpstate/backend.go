@@ -297,7 +297,7 @@ func NewWithCredentials(
 		}
 		return nil
 	})
-	escClient := esc_client.New(client.UserAgent(), cloudURL, apiToken, insecure)
+	escClient := esc_client.NewWithHTTPAuth(client.UserAgent(), cloudURL, insecure, apiClient.HTTPAuth())
 
 	org := env.DefaultOrg.Value()
 	if org == "" {
